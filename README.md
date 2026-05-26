@@ -52,7 +52,7 @@ Through iterative brainstorming with AI, we developed a novel architecture: **Ca
 | :--- | :--- |
 | **Latency < 3s** | **Cascading Parallel Multimodal Streaming**: A "Draft STT" is rendered on UI in **< 0.5s** (Zero Perceived Latency). Immediately after, we fire two parallel Server-Sent Event (SSE) streams via Gemini for the final STT and Translation. |
 | **Entity Retention > 95%** | **Context Injection (RAG-lite)**: The user's Agenda is passed to Gemini to extract a Glossary. This Glossary is dynamically injected into the system prompts of both the STT Refiner and the Translator, guaranteeing correct spelling of names like "OnPoint" or "CREA". |
-| **WER < 10%** | **Multimodal Correction**: Whisper-large-v3 generates the baseline. We then pass *both* the raw audio and the Whisper draft text to Gemini 2.5 Flash. Gemini uses the draft as a hint to transcribe the audio flawlessly. |
+| **WER < 10%** | **Multimodal Correction & Contextual Spelling**: Whisper-large-v3 generates the baseline. We then pass *both* the raw audio and the Whisper draft text to Gemini 2.5 Flash. More importantly, we inject the **Sliding Window History** into the STT prompt with a strict anti-hallucination directive. This allows the AI to correctly spell homophones and maintain name consistency across sentences based on previous context, virtually eliminating common ASR spelling errors. |
 | **Cost < $50 per 2 hours**| Groq API and OpenRouter (Gemini Flash Lite) are extraordinarily cost-effective. Processing 2 hours of audio via this dual-pipeline costs **~$1 - $2** in API tokens, far below the $50 threshold and completely replacing the $1,000 cabin interpreter cost. |
 
 ### Trade-offs Made

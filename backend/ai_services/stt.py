@@ -53,12 +53,19 @@ async def stream_refined_stt(audio_bytes: bytes, draft_text: str, context: str, 
     }
 
     prompt = (
-        "Bạn là hệ thống nhận diện giọng nói cực kỳ chính xác. Nghe âm thanh, kết hợp với bản nháp (Draft) "
-        "và bộ thuật ngữ (nếu có) để tạo ra bản ghi âm gốc hoàn hảo nhất. Sửa các lỗi sai thuật ngữ. "
-        "Trả về ĐÚNG câu chữ được nói, không giải thích gì thêm.\n"
+        "Bạn là hệ thống nhận diện giọng nói cực kỳ chính xác. Nhiệm vụ của bạn là nghe đoạn âm thanh hiện tại và tạo ra bản ghi âm gốc (transcript) hoàn hảo nhất.\n"
+        "CHỈ THỊ NGHIÊM NGẶT:\n"
+        "1. TUYỆT ĐỐI KHÔNG sáng tác hay bịa thêm chữ. Lịch sử câu trước (History) CHỈ được cung cấp để giúp bạn nắm ngữ cảnh, viết đúng chính tả các từ đồng âm (homophones) hoặc tên riêng cho nhất quán.\n"
+        "2. Dựa chặt vào bản nháp (Draft STT) và âm thanh thực tế để bám sát sự thật.\n"
+        "3. Trả về ĐÚNG câu chữ được nói trong chunk hiện tại, không giải thích gì thêm.\n\n"
         f"Glossary: {context}\n"
-        f"Draft STT: {draft_text}"
     )
+
+    if history:
+        history_text = " ".join([item["original"] for item in history])
+        prompt += f"Lịch sử câu trước (History): {history_text}\n"
+
+    prompt += f"Bản nháp hiện tại (Draft STT): {draft_text}"
 
     messages = [
         {
