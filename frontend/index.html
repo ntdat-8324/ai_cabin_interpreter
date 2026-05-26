@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Cabin Interpreter</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Thêm icon từ FontAwesome để UI sinh động hơn -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <h1>AI Cabin Interpreter</h1>
+    <p class="subtitle">Real-time English-Vietnamese Translation System</p>
+    
+    <div class="container">
+        <!-- Bảng điều khiển -->
+        <div class="panel settings-bar">
+            <div class="input-group">
+                <label for="agendaInput">Meeting Agenda / Context</label>
+                <input type="text" id="agendaInput" value="Discussing AI architecture and system integrations">
+            </div>
+            
+            <div class="status-indicator">
+                <div class="dot" id="statusDot"></div>
+                <span id="statusText">Idle</span>
+            </div>
+            
+            <button id="startBtn"><i class="fa-solid fa-microphone"></i> Start Translation</button>
+            <button id="stopBtn" class="hidden"><i class="fa-solid fa-stop"></i> Stop Session</button>
+        </div>
+        
+        <!-- Khung hiển thị chat song song -->
+        <div class="chat-container">
+            <div class="chat-box-wrapper">
+                <div class="header-label"><i class="fa-solid fa-comment-dots"></i> Original Speech</div>
+                <div class="chat-box" id="originalBox"></div>
+            </div>
+            
+            <div class="chat-box-wrapper">
+                <div class="header-label"><i class="fa-solid fa-language"></i> AI Translation</div>
+                <div class="chat-box" id="translatedBox"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
