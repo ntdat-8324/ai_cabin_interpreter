@@ -44,6 +44,7 @@ Through iterative brainstorming with AI, we developed a novel architecture: **Ca
 - We realized that waiting for a robust STT + Translation chain would introduce high latency. 
 - The AI suggested using the Web Audio API for custom VAD (Voice Activity Detection), sending chunks to the backend, and utilizing an ultra-fast STT (Groq Whisper) purely to generate an instant "Draft". 
 - This draft is then streamed to the UI while simultaneously being injected into two parallel Gemini Multimodal (Audio+Text) streams for Refinement and Translation.
+- **Sliding Window History (T-1, T-2)**: To ensure that the AI acts like a true cabin interpreter, the backend maintains a sliding window of the last two translated sentences. This history is continuously injected into the prompt of the current audio chunk (Time T). This mechanism is **critical** for resolving pronouns (e.g., correctly translating "He" by looking at "the CEO" mentioned in T-1) and maintaining conversational flow and cohesive translation across isolated audio chunks.
 
 ### How this Architecture solves the Hackathon Criteria:
 
