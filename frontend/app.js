@@ -15,23 +15,27 @@ const SPEAKING_THRESHOLD = 10; // Phục hồi độ nhạy để không bị mi
 // UI Elements
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
+const uploadBtn = document.getElementById('uploadBtn');
+const audioUpload = document.getElementById('audioUpload');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const originalBox = document.getElementById('originalBox');
 const translatedBox = document.getElementById('translatedBox');
 
-function appendMessage(box, text, isTranslation=false) {
-    const div = document.createElement('div');
-    div.className = `message ${isTranslation ? 'translation-msg' : 'original-msg'}`;
-    div.textContent = text;
-    box.appendChild(div);
-    
-    // Giới hạn UI chỉ giữ lại tối đa 3 kết quả mới nhất
-    while (box.children.length > 3) {
-        box.removeChild(box.firstChild);
+function getOrCreateMessageContainer(box, chunkId, isTranslation=false) {
+    let div = document.getElementById(`chunk-${chunkId}-${isTranslation ? 'trans' : 'orig'}`);
+    if (!div) {
+        div = document.createElement('div');
+        div.id = `chunk-${chunkId}-${isTranslation ? 'trans' : 'orig'}`;
+        div.className = `message ${isTranslation ? 'translation-msg' : 'original-msg'}`;
+        box.appendChild(div);
+        
+        while (box.children.length > 5) {
+            box.removeChild(box.firstChild);
+        }
     }
-    
-    box.scrollTop = box.scrollHeight; // Auto scroll to bottom
+    box.scrollTop = box.scrollHeight;
+    return div;
 }
 
 function updateStatus(text, state) {
@@ -50,14 +54,16 @@ function updateStatus(text, state) {
 
 // Bắt đầu luồng VAD bằng Web Audio API
 function startVAD(stream) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = audioContext.createAnalyser();
-    analyser.minDecibels = -70;
-    analyser.smoothingTimeConstant = 0.2;
-    analyser.fftSize = 512;
-    
-    microphone = audioContext.createMediaStreamSource(stream);
-    microphone.connect(analyser);
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.minDecibels = -70;
+        analyser.smoothingTimeConstant = 0.2;
+        analyser.fftSize = 512;
+        
+        microphone = audioContext.createMediaStreamSource(stream);
+        microphone.connect(analyser);
+    }
     
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
@@ -130,6 +136,9 @@ function onSpeakingStop() {
 }
 
 startBtn.addEventListener('click', async () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+    }
     const agenda = document.getElementById('agendaInput').value;
     
     ws = new WebSocket('ws://localhost:8000/ws');
@@ -142,59 +151,135 @@ startBtn.addEventListener('click', async () => {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
             startBtn.classList.add('hidden');
+            if (uploadBtn) uploadBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
             updateStatus("Waiting for speech...", 'idle');
             
-            // Override hàm onstop của MediaRecorder trong startVAD để lưu timestamp
-            const originalStartVAD = startVAD;
-            
             startVAD(stream);
-            
         } catch (err) {
             console.error("Lỗi Microphone:", err);
             alert("Không thể truy cập Microphone!");
             ws.close();
         }
     };
-    
+    setupWsHandlers();
+});
+
+if (uploadBtn) {
+    uploadBtn.addEventListener('click', () => {
+        audioUpload.click();
+    });
+}
+
+if (audioUpload) {
+    audioUpload.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+        }
+
+        const agenda = document.getElementById('agendaInput').value;
+        ws = new WebSocket('ws://localhost:8000/ws');
+        
+        ws.onopen = async () => {
+            console.log("WebSocket: Connected (File Upload)");
+            ws.send(JSON.stringify({ agenda: agenda }));
+            
+            startBtn.classList.add('hidden');
+            uploadBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            updateStatus("Simulating live audio...", 'listening');
+            
+            const audioUrl = URL.createObjectURL(file);
+            const audioEl = new Audio(audioUrl);
+            audioEl.crossOrigin = "anonymous";
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.minDecibels = -70;
+            analyser.smoothingTimeConstant = 0.2;
+            analyser.fftSize = 512;
+            
+            const source = audioContext.createMediaElementSource(audioEl);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            if (audioEl.captureStream) {
+                stream = audioEl.captureStream();
+            } else if (audioEl.mozCaptureStream) {
+                stream = audioEl.mozCaptureStream();
+            } else {
+                const dest = audioContext.createMediaStreamDestination();
+                source.connect(dest);
+                stream = dest.stream;
+            }
+            
+            startVAD(stream);
+            audioEl.play();
+            
+            audioEl.onended = () => {
+                stopRecording();
+                updateStatus("Finished audio file", 'idle');
+            };
+        };
+        setupWsHandlers();
+    });
+}
+
+function setupWsHandlers() {
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         
-        if(data.original) {
-             // Thời gian từ lúc gửi chunk đến khi có kết quả STT đầu tiên
-             let t0 = chunkStartTimes.length > 0 ? chunkStartTimes[0] : Date.now();
-             let sttLatency = ((Date.now() - t0) / 1000).toFixed(2);
-             appendMessage(originalBox, `${data.original} ⚡ ${sttLatency}s`, false);
+        if (data.type === "draft") {
+            const origContainer = getOrCreateMessageContainer(originalBox, data.chunk_id, false);
+            origContainer.textContent = data.text + " ⚡";
+            origContainer.classList.add('draft-text');
+            
+            const transContainer = getOrCreateMessageContainer(translatedBox, data.chunk_id, true);
+            transContainer.innerHTML = '<span class="draft-text">...</span>';
+        } 
+        else if (data.type === "final_stt") {
+            const origContainer = getOrCreateMessageContainer(originalBox, data.chunk_id, false);
+            if (origContainer.classList.contains('draft-text')) {
+                origContainer.classList.remove('draft-text');
+                origContainer.textContent = '';
+            }
+            origContainer.textContent += data.text;
         }
-        
-        if(data.translated) {
-             // Thời gian từ lúc gửi chunk đến khi hoàn tất dịch thuật (End-to-End)
-             let t0 = chunkStartTimes.length > 0 ? chunkStartTimes.shift() : Date.now();
-             let totalLatency = ((Date.now() - t0) / 1000).toFixed(2);
-             appendMessage(translatedBox, `${data.translated} ⚡ ${totalLatency}s`, true);
+        else if (data.type === "translation") {
+            const transContainer = getOrCreateMessageContainer(translatedBox, data.chunk_id, true);
+            if (transContainer.querySelector('.draft-text')) {
+                transContainer.innerHTML = '';
+            }
+            transContainer.textContent += data.text;
         }
-    }
-
+    };
     
     ws.onclose = () => {
         console.log("WebSocket: Disconnected");
-        stopRecording();
     };
     
     ws.onerror = (e) => {
         console.error("WebSocket Error:", e);
     }
-});
+}
 
 stopBtn.addEventListener('click', stopRecording);
 
 function stopRecording() {
+    if(mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
+
     if (stream) {
         stream.getTracks().forEach(t => t.stop());
     }
-    if (ws) {
-        ws.close();
-    }
+    
+    // Lưu ý: KHÔNG đóng WebSocket ở đây để các task AI đang chạy ở Backend 
+    // vẫn có thể stream kết quả cuối cùng về UI.
+    
     if(audioContext) {
         audioContext.close();
         audioContext = null;
@@ -203,6 +288,7 @@ function stopRecording() {
     isSpeaking = false;
     
     startBtn.classList.remove('hidden');
+    if (uploadBtn) uploadBtn.classList.remove('hidden');
     stopBtn.classList.add('hidden');
-    updateStatus("Idle", 'idle');
+    updateStatus("Idle (Waiting for pending results...)", 'idle');
 }

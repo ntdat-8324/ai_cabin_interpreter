@@ -35,9 +35,12 @@ async def transcribe_audio(audio_bytes: bytes, prompt_context: str = "") -> str:
 import base64
 import httpx
 
-async def transcribe_audio_gemini(audio_bytes: bytes, summarized_context: str, history: list) -> str:
+import json
+from backend.connection import manager
+
+async def stream_refined_stt(audio_bytes: bytes, draft_text: str, context: str, history: list, chunk_id: str, websocket):
     """
-    Sử dụng Gemini 2.5 Flash Lite qua OpenRouter để STT âm thanh dạng Base64.
+    Sử dụng Gemini 2.5 Flash để tinh chỉnh lại bản draft STT, chế độ Streaming.
     """
     if not audio_bytes:
         return ""
@@ -49,13 +52,12 @@ async def transcribe_audio_gemini(audio_bytes: bytes, summarized_context: str, h
         "Content-Type": "application/json"
     }
 
-    # BỎ HOÀN TOÀN history và context khỏi prompt của STT để cắt đứt "nguồn nguyên liệu" gây ảo giác.
-    # LLM sẽ không biết đây là cuộc họp Townhall, không có từ khóa -> bắt buộc phải tập trung nghe Audio.
     prompt = (
-        "You are a strict Automatic Speech Recognition (ASR) system. "
-        "Your ONLY task is to return the EXACT words spoken in this short audio clip. "
-        "If it is just noise, silence, or you cannot hear clear words, return an EMPTY string. "
-        "Output ONLY the transcribed text without any formatting."
+        "Bạn là hệ thống nhận diện giọng nói cực kỳ chính xác. Nghe âm thanh, kết hợp với bản nháp (Draft) "
+        "và bộ thuật ngữ (nếu có) để tạo ra bản ghi âm gốc hoàn hảo nhất. Sửa các lỗi sai thuật ngữ. "
+        "Trả về ĐÚNG câu chữ được nói, không giải thích gì thêm.\n"
+        f"Glossary: {context}\n"
+        f"Draft STT: {draft_text}"
     )
 
     messages = [
@@ -80,18 +82,35 @@ async def transcribe_audio_gemini(audio_bytes: bytes, summarized_context: str, h
     payload = {
         "model": "google/gemini-2.5-flash",
         "messages": messages,
-        "temperature": 0.0
+        "temperature": 0.0,
+        "stream": True
     }
 
+    full_text = ""
     try:
         async with httpx.AsyncClient() as client_httpx:
-            response = await client_httpx.post(url, headers=headers, json=payload, timeout=60.0)
-            data = response.json()
-            if "choices" in data and len(data["choices"]) > 0:
-                return data["choices"][0]["message"]["content"].strip()
-            else:
-                print(f"[Gemini STT Error]: {data}")
-                return ""
+            async with client_httpx.stream("POST", url, headers=headers, json=payload, timeout=60.0) as response:
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data_json = json.loads(data_str)
+                            if "choices" in data_json and len(data_json["choices"]) > 0:
+                                delta = data_json["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_text += content
+                                    # Đẩy ngay xuống WebSocket
+                                    await manager.send_message_safe(websocket, json.dumps({
+                                        "type": "final_stt",
+                                        "chunk_id": chunk_id,
+                                        "text": content
+                                    }))
+                        except Exception as e:
+                            pass
+        return full_text.strip()
     except Exception as e:
-        print(f"[Gemini STT Exception]: {e}")
-        return ""
+        print(f"[Stream Refined STT Exception]: {e}")
+        return full_text.strip()

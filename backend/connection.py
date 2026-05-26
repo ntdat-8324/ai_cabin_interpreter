@@ -1,4 +1,5 @@
 import asyncio
+# pyrefly: ignore [missing-import]
 from fastapi import WebSocket
 import json
 
@@ -9,6 +10,8 @@ class ConnectionManager:
         self.audio_queues: dict[WebSocket, asyncio.Queue] = {}
         # Mapping WebSocket tới Context (Agenda, Sliding Window History)
         self.contexts: dict[WebSocket, dict] = {}
+        # Lock để chống đụng độ khi stream
+        self.locks: dict[WebSocket, asyncio.Lock] = {}
 
     def connect(self, websocket: WebSocket, context_data: dict):
         self.active_connections.append(websocket)
@@ -18,6 +21,7 @@ class ConnectionManager:
             "raw_agenda": context_data.get("raw_agenda", ""),
             "history": [] # Lưu 2 câu gần nhất: [{"original": "...", "translated": "..."}]
         }
+        self.locks[websocket] = asyncio.Lock()
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -26,6 +30,8 @@ class ConnectionManager:
             del self.audio_queues[websocket]
         if websocket in self.contexts:
             del self.contexts[websocket]
+        if websocket in self.locks:
+            del self.locks[websocket]
 
     def get_queue(self, websocket: WebSocket) -> asyncio.Queue | None:
         return self.audio_queues.get(websocket)
@@ -35,6 +41,12 @@ class ConnectionManager:
             "original": original,
             "translated": translated
         }
-        await websocket.send_text(json.dumps(data))
+        await self.send_message_safe(websocket, json.dumps(data))
+
+    async def send_message_safe(self, websocket: WebSocket, message: str):
+        lock = self.locks.get(websocket)
+        if lock:
+            async with lock:
+                await websocket.send_text(message)
 
 manager = ConnectionManager()
