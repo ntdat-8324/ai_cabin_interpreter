@@ -38,9 +38,12 @@ The **AI Cabin Interpreter** is a near-real-time translation system designed for
 ## 🧠 3. Developer's Agentic Coding Journey (Submission Details)
 
 ### AI in the Development Process
-This project was built using an intensive **Agentic Coding Workflow**. Rather than simply generating code snippets, AI was heavily utilized as an architectural partner to design the data pipeline and optimize latency constraints. 
+This project was built using an intensive **Agentic Coding Workflow**. Rather than simply using AI as an autocomplete tool, AI acted as an architectural partner and autonomous developer:
+1. **Ideation & Prompt Engineering:** The initial concept, critical technical debates, and foundational prompt engineering were conducted collaboratively with **Gemini 3.1 Pro**.
+2. **Masterplan Generation:** Using **Google Antigravity**, we collaborated with Gemini 3.1 Pro to draft a comprehensive `MASTERPLAN.md` to outline the architecture, API integrations, and latency budgets.
+3. **Multi-Agent Coding:** The actual implementation was carried out by orchestrating specialized AI agents within Google Antigravity to write, refactor, and debug the codebase autonomously.
 
-Through iterative brainstorming with AI, we developed a novel architecture: **Cascading Parallel Multimodal Streaming**. 
+Through iterative brainstorming and agentic execution, we developed a novel architecture: **Cascading Parallel Multimodal Streaming**. 
 - We realized that waiting for a robust STT + Translation chain would introduce high latency. 
 - The AI suggested using the Web Audio API for custom VAD (Voice Activity Detection), sending chunks to the backend, and utilizing an ultra-fast STT (Groq Whisper) purely to generate an instant "Draft". 
 - This draft is then streamed to the UI while simultaneously being injected into two parallel Gemini Multimodal (Audio+Text) streams for Refinement and Translation.
